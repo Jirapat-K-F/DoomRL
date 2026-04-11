@@ -105,5 +105,5 @@ def train(num_episodes) :
 
 
 if __name__ == "__main__" : 
-    logging.info("Running with BATCH_SIZE",BATCH_SIZE)
+    logging.info("Running with {}".format(BATCH_SIZE))
     train(NUM_EPISODE)
