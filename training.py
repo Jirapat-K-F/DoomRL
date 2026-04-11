@@ -94,7 +94,8 @@ def train(num_episodes) :
             
             for key in policy_net.state_dict() : 
                 target_net_state_dict[key] = policy_net_state_dict[key] * TAU + target_net_state_dict[key] * (1-TAU)
-                target_net.load_state_dict(target_net_state_dict)
+            
+            target_net.load_state_dict(target_net_state_dict)
 
             if done :
                 logging.info("Episode {} reward: {}".format(i_episodes,cum_reward))
