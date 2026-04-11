@@ -1,0 +1,9 @@
+# Training setting
+GAMMA = 0.99
+LR = 0.01
+BATCH_SIZE = 40
+EPS_START = 1.0
+EPS_END = 0.1
+
+EPS_DECAY = 2500
+TAU = 0.005

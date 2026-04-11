@@ -1,0 +1,5 @@
+logs
+weights
+.vscode
+.DS_Store
+__pycache__
