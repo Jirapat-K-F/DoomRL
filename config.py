@@ -11,7 +11,8 @@ EPS_START = data['EPS_START']
 EPS_END = data['EPS_END']
 EPS_DECAY = data['EPS_DECAY']
 TAU = data['TAU']
-NUM_EPISODE = data['NUM_EPISODE']
+NUM_EPISODE = None if 'NUM_EPISODE' not in data else data['NUM_EPISODE']
+MAX_STEPS = None if 'MAX_STEPS' not in data else data['MAX_STEPS']
 
 # naming
 ARCH = data['ARCH']
@@ -27,6 +28,9 @@ MEMORY_CAP = data['MEMORY_CAP']
 PRELOAD_WEIGHT = None if 'PRELOAD_WEIGHT' not in data else data['PRELOAD_WEIGHT']
 CHKPOINT_NUM = 0 if 'CHKPOINT_NUM' not in data else data['CHKPOINT_NUM']
 SAVING_INTERVAL = data['SAVING_INTERVAL']
+VALIDATION_INTERVAL = data['VALIDATION_INTERVAL']
+VALIDATION_EPISODES = data['VALIDATION_EPISODES']
+
 # inferencing
 RENDER_MODE = None if 'RENDER_MODE' not in data else data['RENDER_MODE']
 RESOLUTION = data['RESOLUTION']

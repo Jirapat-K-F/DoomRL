@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 from model import memory
 from config import *
-from datamodel import Transition
+from datamodel import Transition , training_info
 from env import device , env as GameEnv
 from model import policy_net , target_net , optimizer
 from itertools import count
@@ -20,6 +20,7 @@ from utils import select_action , save_state_dict
 from tqdm import tqdm
 from preprocessor import base_preprocessor
 from icecream import ic
+from inference import infer
 
 import os
 
@@ -34,6 +35,7 @@ def optimize_model(preprocessor) :
         return
     global isDatapointEnough
     isDatapointEnough = True
+    training_info.learning_step += 1
     transitions = memory.sample(BATCH_SIZE,preprocessor)
     batch = Transition(*zip(*transitions))
 
@@ -66,30 +68,44 @@ def train(num_episodes,preprocessor) :
 
     try :
 
-        iteration = tqdm(range(num_episodes),total=num_episodes)
+        iteration_mode = "episode" if NUM_EPISODE is not None else "steps"
+
+        logging.info(f"Using iteration mode of {iteration_mode}")
+
+        total_iteration = NUM_EPISODE if NUM_EPISODE is not None else MAX_STEPS
+
+        iteration = tqdm(range(total_iteration),total=total_iteration)
+        
+        training_end = False
+
         mx_cum_reward = -1e9
 
-        for i_episodes in iteration :
+        for i_episodes in count() :
             cum_reward = 0
             game_state , info = GameEnv.reset()
-            state = torch.tensor(game_state['screen'] , dtype = torch.float32 , device = device).unsqueeze(0).permute(0,3,1,2)
+            state = torch.tensor(game_state['screen'].copy() , dtype = torch.float32).unsqueeze(0).permute(0,3,1,2)
             processed_state = preprocessor(state,device=device)
             for t in count() :
-                action = select_action(processed_state,t)
+                action = select_action(processed_state,training_info.learning_step)
                 observation , reward , terminated , truncated , _ = GameEnv.step(action.logits.item())
+                if iteration_mode == "steps" :
+                    iteration.n = training_info.learning_step
+                    iteration.refresh()
+                    iteration.set_description(f"Step Reward {reward}")
                 reward = torch.tensor([reward],device=device)
                 done = terminated or truncated
 
                 if terminated : 
                     next_state = None
                 else :
-                    next_state = torch.tensor(observation['screen'] , dtype = torch.float32 , device = device ).unsqueeze(0).permute(0,3,1,2)
+                    next_state = torch.tensor(observation['screen'].copy() , dtype = torch.float32).unsqueeze(0).permute(0,3,1,2)
 
                 memory.push(state , action.logits , next_state , reward)
 
                 cum_reward += reward.item()
 
-                iteration.set_description(f"Episode reward: {cum_reward}")
+                if iteration_mode == "episode" :
+                    iteration.set_description(f"Episode reward: {cum_reward}")
 
                 state = next_state
                 processed_state = preprocessor(state, device=device)
@@ -104,18 +120,39 @@ def train(num_episodes,preprocessor) :
                 
                 target_net.load_state_dict(target_net_state_dict)
 
-                if done :
-                    logging.info("Episode {} reward: {}".format(i_episodes,cum_reward))
+                if iteration_mode == "steps" :
+                    # validation
+                    if training_info.learning_step % VALIDATION_INTERVAL == 0 and training_info.learning_step != 0:
+                        print("Validation at step {}".format(training_info.learning_step))
+                        policy_net.eval()
+                        rewards_list = infer(VALIDATION_EPISODES) # testing with 1000 episodes
+                        training_info.eval_mean_rewards.append((training_info.learning_step,sum(rewards_list)/len(rewards_list)))
+                        training_info.to_csv("evaluation.csv")
+                        policy_net.train()
+                        game_state , info = GameEnv.reset()
+                        state = torch.tensor(game_state['screen'] , dtype = torch.float32 , device = device).unsqueeze(0).permute(0,3,1,2)
+                        processed_state = preprocessor(state,device=device)
+
+                if training_info.learning_step % SAVING_INTERVAL == 0 and training_info.learning_step != 0:
                     if isDatapointEnough :
                         mx_cum_reward = max(cum_reward,mx_cum_reward)
                         shouldPersist = (cum_reward >= mx_cum_reward)
                         if(shouldPersist) :
                             logging.info("Saving weight with persisting = {}".format(shouldPersist))
-                            save_state_dict(policy_net,optimizer,episode=i_episodes,persisted=shouldPersist)
-                        elif i_episodes % SAVING_INTERVAL == 0 :
+                            save_state_dict(policy_net,optimizer,steps=training_info.learning_step,persisted=shouldPersist)
+                        elif training_info.learning_step % SAVING_INTERVAL == 0 :
                             logging.info("Saving weight with persisting = {} (interval saving)".format(shouldPersist))
-                            save_state_dict(policy_net,optimizer,episode=i_episodes,persisted=False)
+                            save_state_dict(policy_net,optimizer,steps=training_info.learning_step,persisted=False)
+
+                if (iteration_mode == "steps" and (training_info.learning_step >= MAX_STEPS - 1)) or (iteration_mode == "episode" and (i_episodes >= NUM_EPISODE - 1)) :
+                    training_end = True
                     break
+
+                if done :
+                    break
+                
+            if training_end :
+                break
     except Exception as e:
         raise e
     finally :
