@@ -41,7 +41,7 @@ class ResNet(nn.Module):
         self.head = nn.Linear(feat_dim, n_actions)
 
     def forward(self, x):
-        x = F.interpolate(x, size=(224, 224))
+        # We now expect x to be pre-resized to 112x112 or similar by the preprocessor
         x = self.backbone(x)
         return self.head(x)
 
