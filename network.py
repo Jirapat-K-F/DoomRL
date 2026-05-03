@@ -12,11 +12,11 @@ class CNN(nn.Module) :
 
     def __init__(self,n_actions) :
         super().__init__()
-        self.conv1 = nn.Conv2d(3,32,7)
+        self.conv1 = nn.Conv2d(4,32,7) # Changed from 3 to 4
         self.conv2 = nn.Conv2d(32,32,4)
         self.maxpool = nn.MaxPool2d(2)
         self.maxpool2 = nn.MaxPool2d(2)
-        self.ff = nn.Linear(3072,800)
+        self.ff = nn.Linear(20000,800) # Updated for 112x112 input
         self.ff2 = nn.Linear(800,n_actions)
         
     
@@ -36,12 +36,22 @@ class ResNet(nn.Module):
         super().__init__()
         weights = models.ResNet18_Weights.DEFAULT
         self.backbone = models.resnet18(weights=weights)
+        
+        # Modify the first layer to accept 4 channels instead of 3
+        old_conv = self.backbone.conv1
+        self.backbone.conv1 = nn.Conv2d(4, old_conv.out_channels, 
+                                        kernel_size=old_conv.kernel_size, 
+                                        stride=old_conv.stride, 
+                                        padding=old_conv.padding, 
+                                        bias=old_conv.bias)
+        
         feat_dim = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()
         self.head = nn.Linear(feat_dim, n_actions)
 
     def forward(self, x):
         # We now expect x to be pre-resized to 112x112 or similar by the preprocessor
+        x = F.interpolate(x, size=(224, 224)) # ResNet works better at 224x224
         x = self.backbone(x)
         return self.head(x)
 
@@ -50,6 +60,15 @@ class ActorCriticResNet(nn.Module):
         super().__init__()
         weights = models.ResNet18_Weights.DEFAULT
         self.backbone = models.resnet18(weights=weights)
+        
+        # Modify the first layer to accept 4 channels instead of 3
+        old_conv = self.backbone.conv1
+        self.backbone.conv1 = nn.Conv2d(4, old_conv.out_channels, 
+                                        kernel_size=old_conv.kernel_size, 
+                                        stride=old_conv.stride, 
+                                        padding=old_conv.padding, 
+                                        bias=old_conv.bias)
+
         feat_dim = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()
         
@@ -57,7 +76,7 @@ class ActorCriticResNet(nn.Module):
         self.critic = nn.Linear(feat_dim, 1)
 
     def forward(self, x):
-        x = F.interpolate(x, size=(224, 224))
+        x = F.interpolate(x, size=(224, 224)) 
         x = self.backbone(x)
         logits = self.actor(x)
         value = self.critic(x)
@@ -66,11 +85,11 @@ class ActorCriticResNet(nn.Module):
 class ActorCriticCNN(nn.Module):
     def __init__(self, n_actions):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 32, 7)
+        self.conv1 = nn.Conv2d(4, 32, 7) # Changed from 3 to 4
         self.conv2 = nn.Conv2d(32, 32, 4)
         self.maxpool = nn.MaxPool2d(2)
         self.maxpool2 = nn.MaxPool2d(2)
-        self.ff = nn.Linear(3072, 800)
+        self.ff = nn.Linear(20000, 800) # Updated for 112x112 input
         
         self.actor = nn.Linear(800, n_actions)
         self.critic = nn.Linear(800, 1)

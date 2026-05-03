@@ -35,6 +35,7 @@ def infer(n_episodes) :
 
             cum_reward = 0
             game_state , info = GameEnv.reset()
+            base_preprocessor.reset() # Reset frame stack
             state = base_preprocessor(torch.tensor(game_state['screen'].copy() , dtype = torch.float32).unsqueeze(0).permute(0,3,1,2),device=device)
             for t in count() :
                 action = select_action(state.to(device),t,inference=True)

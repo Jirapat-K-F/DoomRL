@@ -1,36 +1,49 @@
 import torch
 import torch.nn.functional as F
+import collections
 
-class NormalPreprocessor:
-    def __init__(self):
-        pass
+class FrameStackPreprocessor:
+    def __init__(self, n_frames=4, out_size=(112, 112)):
+        self.n_frames = n_frames
+        self.out_size = out_size
+        self.frames = collections.deque(maxlen=n_frames)
 
-    def __call__(self, frame, out_size=(112, 112), device=None):
+    def reset(self):
+        self.frames.clear()
+
+    def __call__(self, frame, device=None):
         if frame is None:
             return None
         
-        # If frame is a list (for DQN sampling), handle it
-        if isinstance(frame, list):
-            frames = torch.cat(frame, dim=0)
-        else:
-            frames = frame
-
-        # Ensure we are on the correct device immediately
+        # Ensure we are on the correct device
         if device is not None:
-            frames = frames.to(device)
+            frame = frame.to(device)
 
-        # Optimization: Perform all operations in a vectorized way on GPU
-        # VizDoom typically provides (B, C, H, W) or (C, H, W)
+        # Convert to grayscale if it's RGB (3 channels)
+        if frame.shape[1] == 3:
+            # Simple average or luminosity formula
+            frame = frame.mean(dim=1, keepdim=True)
+
         # Normalize to [0, 1]
-        frames = frames.float() / 255.0
+        frame = frame.float() / 255.0
 
-        # Resize using GPU-accelerated interpolation
-        if frames.shape[-2:] != out_size:
-            frames = F.interpolate(frames, size=out_size, mode='bilinear', align_corners=False)
+        # Resize
+        if frame.shape[-2:] != self.out_size:
+            frame = F.interpolate(frame, size=self.out_size, mode='bilinear', align_corners=False)
 
-        return frames
+        # Handle initial frames by filling the deque
+        if len(self.frames) == 0:
+            for _ in range(self.n_frames):
+                self.frames.append(frame)
+        else:
+            self.frames.append(frame)
+
+        # Stack frames along the channel dimension
+        stacked_frames = torch.cat(list(self.frames), dim=1)
+        return stacked_frames
     
     def close(self):
         pass
 
-base_preprocessor = NormalPreprocessor()
+base_preprocessor = FrameStackPreprocessor()
+

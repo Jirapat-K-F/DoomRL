@@ -159,6 +159,7 @@ def train(num_episodes,preprocessor) :
         for i_episodes in count() :
             cum_reward = 0
             game_state , info = GameEnv.reset()
+            preprocessor.reset() # Reset frame stack for new episode
             state = torch.tensor(game_state['screen'].copy() , dtype = torch.float32).unsqueeze(0).permute(0,3,1,2)
             processed_state = preprocessor(state,device=device)
             for t in count() :
@@ -280,4 +281,4 @@ if __name__ == "__main__" :
     )
     wandb.watch(policy_net, log="all", log_freq=100)
     logging.info("Running with {}".format(BATCH_SIZE))
-    train(NUM_EPISODE,base_preprocessor)
+    train(NUM_EPISODE,base_preprocessor)preprocessor)
