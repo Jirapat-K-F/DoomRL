@@ -58,7 +58,7 @@ def optimize_model(preprocessor) :
         # PPO Optimization loop
         for epoch in range(PPO_EPOCHS):
             # Shuffle and batch
-            indices = torch.randperm(data.shape[0])
+            indices = torch.randperm(data.shape[0], device=device) # Shuffle on GPU
             for i in range(0, data.shape[0], PPO_BATCH_SIZE):
                 batch_indices = indices[i : i + PPO_BATCH_SIZE]
                 batch_data = data[batch_indices]
@@ -66,13 +66,13 @@ def optimize_model(preprocessor) :
                 loss_vals = loss_module(batch_data)
                 loss_value = loss_vals["loss_objective"] + loss_vals["loss_critic"] + loss_vals["loss_entropy"]
                 
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True) # Faster than zero_grad()
                 loss_value.backward()
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 1.0)
                 optimizer.step()
         
-        # Clear cache after optimization
-        torch.cuda.empty_cache()
+        # Only empty cache if needed, it's slow
+        # torch.cuda.empty_cache() 
         
         wandb.log({
             "loss/total": loss_value.item(),
@@ -179,12 +179,14 @@ def train(num_episodes,preprocessor) :
 
                 if METHOD == "PPO":
                     # For PPO, we need to store the transition in a TensorDict
-                    # action.td already contains observation, logits, action, log_prob
-                    # MUST DETACH to avoid memory leak (keeping the computation graph of the rollout)
                     current_td = action.td.detach().clone()
                     
                     with torch.no_grad():
-                        next_obs = preprocessor(next_state, device=device) if next_state is not None else torch.zeros_like(processed_state)
+                        if next_state is not None:
+                            # Use non_blocking to speed up transfer
+                            next_obs = preprocessor(next_state, device=device)
+                        else:
+                            next_obs = torch.zeros_like(processed_state)
                     
                     current_td.set("next", TensorDict({
                         "observation": next_obs,
@@ -194,7 +196,6 @@ def train(num_episodes,preprocessor) :
                     }, batch_size=[1], device=device))
                     ppo_buffer.append(current_td.squeeze(0))
                     
-                    # Optimization: Reuse next_obs for the next step's processed_state
                     state = next_state
                     processed_state = next_obs
                 else:
@@ -281,4 +282,4 @@ if __name__ == "__main__" :
     )
     wandb.watch(policy_net, log="all", log_freq=100)
     logging.info("Running with {}".format(BATCH_SIZE))
-    train(NUM_EPISODE,base_preprocessor)preprocessor)
+    train(NUM_EPISODE,base_preprocessor)

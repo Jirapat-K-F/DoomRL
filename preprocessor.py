@@ -17,19 +17,16 @@ class FrameStackPreprocessor:
         
         # Ensure we are on the correct device
         if device is not None:
-            frame = frame.to(device)
+            frame = frame.to(device, non_blocking=True)
 
-        # Convert to grayscale if it's RGB (3 channels)
+        # Grayscale conversion using luminosity weights for speed/accuracy
         if frame.shape[1] == 3:
-            # Simple average or luminosity formula
-            frame = frame.mean(dim=1, keepdim=True)
+            # frame is [B, 3, H, W]
+            weights = torch.tensor([0.2989, 0.5870, 0.1140], device=frame.device).view(1, 3, 1, 1)
+            frame = (frame * weights).sum(dim=1, keepdim=True)
 
-        # Normalize to [0, 1]
-        frame = frame.float() / 255.0
-
-        # Resize
-        if frame.shape[-2:] != self.out_size:
-            frame = F.interpolate(frame, size=self.out_size, mode='bilinear', align_corners=False)
+        # Combined normalization and resizing
+        frame = F.interpolate(frame.float() / 255.0, size=self.out_size, mode='bilinear', align_corners=False)
 
         # Handle initial frames by filling the deque
         if len(self.frames) == 0:
@@ -39,8 +36,7 @@ class FrameStackPreprocessor:
             self.frames.append(frame)
 
         # Stack frames along the channel dimension
-        stacked_frames = torch.cat(list(self.frames), dim=1)
-        return stacked_frames
+        return torch.cat(list(self.frames), dim=1)
     
     def close(self):
         pass
